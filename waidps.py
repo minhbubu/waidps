@@ -4,13 +4,14 @@
 ## Author will be not responsible for any damage!
 ## Written By SY Chua, syworks@gmail.com
 ##
-## Current - WiFi Harvester & IDPS & Auditor
+## Current - WiFi
+# Harvester & IDPS & Auditor
 ## Addon - Updating AP & Station Detail with live monitoring
 ## Changes/Added
 ## - Bug fix on Whitelist displaying
 ## - Adding logging for live monitoring
 ## - Load sniffer after return from LiveMonitoring
-## - Allow user to list out all clients which was detected to be associated to more than one access point
+## - Allow user to list out all clients which was detected to be associatfed to more than one access point
 ## - Adding new option for WPS attack
 ## - Adding ESSID & MAC OUI to Suspicious Activity Listing
 ## - Read WPS detail from captured file with Wash instead of running Wash
@@ -31,6 +32,8 @@
 #############
 ## MODULES ##
 #############
+from _osx_support import _find_build_tool
+
 IMPORT_ERRMSG=""
 import __builtin__
 import os,sys,subprocess,getopt,glob
@@ -44,6 +47,13 @@ import shutil
 import re
 import readline
 import threading
+import requests
+import json
+import socket
+import serial
+import time
+
+from urlparse import urlparse
 from signal import SIGINT, SIGTERM
 from subprocess import Popen, call, PIPE
 from sys import stdout, stdin 
@@ -5530,11 +5540,14 @@ def GetOptionCommands(HeaderLine):
     Option1 = SelBColor + "A" + StdColor + " - " + SelColor + "A" + StdColor + "uditing Network\t\t"
     Option2 = SelBColor + "I" + StdColor + " - " + SelColor + "I" + StdColor + "nteractive Mode (Packet Analysis)\t    "
     Option3 = SelBColor + "P" + StdColor + " - Intrusion " + SelColor + "P" + StdColor + "revention\t\t\t"
-    Option4 = SelBColor + "X" + StdColor + " - E" + SelColor + "x" + StdColor + "it Application\t"
+    Option4 = SelBColor + "S" + StdColor + " - " + SelColor + "S" + StdColor + "ending Options\t"
     OptionC=Option1 + Option2 + Option3 + Option4
+    Option5 = SelBColor + "X" + StdColor + " - E" + SelColor + "x" + StdColor + "it Application\t"
+    OptionD = Option5
     printc (" ", fcolor.BYellow + OptionA,"")
     printc (" ", fcolor.BYellow + OptionB,"")
     printc (" ", fcolor.BYellow + OptionC,"")
+    printc (" ", fcolor.BYellow + OptionD, "")
     print ""
     usr_resp=AskQuestion("Enter your option : ",fcolor.SWhite + "<default = return>","U","RETURN","1")
     LineBreak()
@@ -5589,6 +5602,9 @@ def GetOptionCommands(HeaderLine):
         OptInfoDisplay("","1");LineBreak();return;
     if usr_resp=="H":
         OptDisplayLogs();LineBreak();return;
+    if usr_resp=="S":
+        OptSending("")
+        SaveConfig("");LineBreak();return;
     return;
 
 def AUDITOR_WARNING():
@@ -7033,7 +7049,7 @@ def OptDictionarySetting(HeaderLine,DisplayHeader):
                 return
         
     return
-
+# Thesis Edited Application Config
 def OptConfiguration(HeaderLine):
     if HeaderLine!="":
         LineBreak()
@@ -7048,9 +7064,10 @@ def OptConfiguration(HeaderLine):
     Option7 = tabspacefull + SelBColor + "7" + StdColor + "/" + SelBColor + "M" + StdColor + " - Save PCap when " + SelColor + "M" + StdColor + "onitored MAC/Name seen\t" + fcolor.SGreen + "[ Current : " + str(__builtin__.SAVE_MONPKT) + " ]\n"
     Option8 = tabspacefull + SelBColor + "8" + StdColor + "/" + SelBColor + "W" + StdColor + " - " + SelColor + "W" + StdColor + "hitelist Setting (Bypass alert for MAC/Name)\n"
     Option9 = tabspacefull + SelBColor + "9" + StdColor + "/" + SelBColor + "D" + StdColor + " - " + SelColor + "D" + StdColor + "ictionary Detail and Setting\t\t" + fcolor.SGreen + "[ Current : " + str(__builtin__.SELECTED_DICT) + " ]\n"
-    OptionA=Option0 + Option1 + Option2 + Option3  + Option4 + Option5+ Option6  + Option7 + Option8+ Option9
+    Option10 = tabspacefull + SelBColor + "10" + StdColor + "/" + SelBColor + "J" + StdColor + " - Save logs to " + SelColor + "J" + StdColor + "son files\t\t\t" + fcolor.SGreen + "[ Current : " + str(__builtin__.saveToJson) + " ]\n"
+    OptionA=Option0 + Option1 + Option2 + Option3  + Option4 + Option5+ Option6  + Option7 + Option8 + Option9 + Option10
     print OptionA
-    usr_resp=AskQuestion("Choose an option","D/R/T/H/B/W/C","U","RETURN","1")
+    usr_resp=AskQuestion("Choose an option","D/R/T/H/B/W/C/J","U","RETURN","1")
     if usr_resp=="RETURN":
         return;
     if usr_resp=="8" or usr_resp=="W":
@@ -7121,7 +7138,72 @@ def OptConfiguration(HeaderLine):
             __builtin__.ALERTSOUND="Yes"
         elif usr_resp=="N":
             __builtin__.ALERTSOUND="No"
+    if usr_resp=="10" or usr_resp=="J":
+        usr_resp=AskQuestion("Sending Logs to Webserver Monitor " + fcolor.SGreen + "- Current = " + str(__builtin__.sendToServer) + " " + fcolor.BGreen,"Y/n","U","Y","1")
+        if usr_resp=="Y":
+            __builtin__.saveToJson="Yes"
+        elif usr_resp=="N":
+            __builtin__.saveToJson="No"
     OptConfiguration("1")
+    return
+# Thesis Sending Options
+def OptSending(HeaderLine):
+    if HeaderLine!="":
+        LineBreak()
+    printc("+", fcolor.BBlue + "Sending Options", "")
+    Option0 = tabspacefull + SelBColor + "0" + StdColor + "/" + SelBColor + "W" + StdColor + " - Change " + SelColor + "W" + StdColor + "ebserver Monitor URL\t" + fcolor.SGreen + "[ Current : " + str(__builtin__.SERVER_URL) + " ]\n"
+    Option1 = tabspacefull + SelBColor + "1" + StdColor + "/" + SelBColor + "M" + StdColor + " - Sending Logs to Webserver " + SelColor + "M" + StdColor + "onitor\t" + fcolor.SGreen + "[ Current : " + str(__builtin__.sendToServer) + " ]\n"
+    Option2 = tabspacefull + SelBColor + "2" + StdColor + "/" + SelBColor + "N" + StdColor + " - Change Phone " + SelColor + "N" + StdColor + "umber for SMS\t\t" + fcolor.SGreen + "[ Current : " + str(__builtin__.PHONE_NUMBER) + " ]\n"
+    Option3 = tabspacefull + SelBColor + "3" + StdColor + "/" + SelBColor + "G" + StdColor + " - Change SMS " + SelColor + "G" + StdColor + "ateway for SMS\t\t" + fcolor.SGreen + "[ Current : " + str(__builtin__.SMS_GATEWAY) + " ]\n"
+    Option4 = tabspacefull + SelBColor + "4" + StdColor + "/" + SelBColor + "S" + StdColor + " - Sending Detections through " + SelColor + "S" + StdColor + "MS\t" + fcolor.SGreen + "[ Current : " + str(__builtin__.sendSMS) + " ]\n"
+    OptionA = Option0 + Option1 + Option2 + Option3 + Option4
+    print OptionA
+    usr_resp = AskQuestion("Choose an option", "W/M/N/G/S", "U", "RETURN", "1")
+    if usr_resp=="RETURN":
+        return;
+    if usr_resp == "0" or usr_resp=="W":
+        usr_resp = AskQuestion("Change Webserver Monitor URL " + fcolor.SGreen + "[Current : " + str(__builtin__.SERVER_URL) + " ]","", "U", "", "1")
+        if CheckURL(usr_resp) == True:
+            __builtin__.SERVER_URL = usr_resp
+            SaveConfig("")
+        return
+    if usr_resp == "1" or usr_resp == "M":
+        usr_resp = AskQuestion("Sending Logs to Webserver Monitor " + fcolor.SGreen + "- Current = " + str(__builtin__.sendToServer) + " " + fcolor.BGreen, "Y/n", "U", "N", "1")
+        if usr_resp == "Y":
+            if __builtin__.SERVER_URL != "":
+                __builtin__.sendToServer = "Yes"
+                SendConnectJson()
+            else:
+                printc("!!!", "Please set the Webserver Monitor URL.", "")
+        elif usr_resp == "N":
+            __builtin__.sendToServer = "No"
+            if __builtin__.SERVER_URL != "":
+                SendDisconnectJson()
+    if usr_resp == "2" or usr_resp == "N":
+        usr_resp = AskQuestion("Change Phone Number for SMS " + fcolor.SGreen + "[Current : " + str(__builtin__.PHONE_NUMBER) + "]", "","U", "", "1")
+        if CheckPhone(usr_resp) !="":
+            __builtin__.PHONE_NUMBER = CheckPhone(usr_resp)
+            SaveConfig("")
+        return
+    if usr_resp == "3" or usr_resp == "G":
+        usr_resp = AskQuestion("Change SMS Gateway for SMS " + fcolor.SGreen + "[Current : " + str(__builtin__.SMS_GATEWAY) + " ]", "","U", "", "1")
+        __builtin__.SMS_GATEWAY = usr_resp
+        SaveConfig("")
+        return
+    if usr_resp == "4" or usr_resp == "S":
+        usr_resp = AskQuestion("Sending Detections through SMS " + fcolor.SGreen + "- Current = " + str(__builtin__.sendSMS) + " " + fcolor.BGreen, "Y/n", "U", "N", "1")
+        if usr_resp == "Y":
+            if (__builtin__.SMS_GATEWAY != "") and (__builtin__.PHONE_NUMBER != ""):
+                __builtin__.sendSMS = "Yes"
+            elif (__builtin__.SMS_GATEWAY == "") and (__builtin__.PHONE_NUMBER == ""):
+                printc("!!!", "Please set SMS Gateway and Phone Number for Sending SMS.", "")
+            elif __builtin__.SMS_GATEWAY == "":
+                printc("!!!","Please set the SMS Gateway.","")
+            elif __builtin__.PHONE_NUMBER == "":
+                printc("!!!", "Please set the Phone Number.", "")
+        elif usr_resp == "N":
+            __builtin__.sendSMS = "No"
+    OptSending("1")
     return
 
 def DisplayWhitelist():
@@ -8491,6 +8573,7 @@ def DisplayDescription():
     print fcolor.SWhite + " "
     print ""
 
+# Thesis Edited Help Details Display
 def DisplayDetailHelp():
     print fcolor.BGreen + "Usage   : " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " [options] " + fcolor.BBlue + "<args>"
     print fcolor.CReset + fcolor.Black + "          Running application without parameter will fire up the interactive mode."
@@ -8503,14 +8586,19 @@ def DisplayDetailHelp():
     print ""
     print fcolor.BWhite + "    -i  --iface" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Set Interface to use"
     print fcolor.BWhite + "    -t  --timeout" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Duration to capture before analysing the captured data"
+    print fcolor.BWhite + "    -surl  --serverurl" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Set Webserver Monitor URL"
+    print fcolor.BWhite + "    -ph  --phone" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Set Phone Number for SMS (Need to use with -smsgw !!!)"
+    print fcolor.BWhite + "    -smsgw  --smsgateway" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Set SMS Gateway (Need to use with -ph !!!)"
     print ""
     print fcolor.BGreen + "Examples: " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " --update"
     print fcolor.BGreen + "          " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " -i " + fcolor.BBlue + "wlan0" 
-    print fcolor.BGreen + "          " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " --iface " + fcolor.BBlue + "wlan1" 
+    print fcolor.BGreen + "          " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " --iface " + fcolor.BBlue + "wlan1"
+    print fcolor.BGreen + "          " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " -surl " + fcolor.BBlue + "http://192.168.1.10:80/POST"
+    print fcolor.BGreen + "          " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " -ph " + fcolor.BBlue + "0917330303" + fcolor.BWhite + " -smsgw " + fcolor.BBlue + "/dev/ttyUSB0"
     print ""
     DrawLine("-",fcolor.CReset + fcolor.Black,"","")
     print ""
-
+# Thesis Edited Help Display
 def DisplayHelp():
     print fcolor.BGreen + "Usage   : " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " [options] " + fcolor.BBlue + "<args>"
     print fcolor.CReset + fcolor.Black + "          Running application without parameter will fire up the interactive mode."
@@ -8521,21 +8609,34 @@ def DisplayHelp():
     print ""
     print fcolor.BWhite + "    -i  --iface" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Set Interface to use"
     print fcolor.BWhite + "    -t  --timeout" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Duration to capture before analysing the captured data"
+    print fcolor.BWhite + "    -surl  --serverurl" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Set Webserver Monitor URL"
+    print fcolor.BWhite + "    -ph  --phone" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Set Phone Number for SMS (Must use with -smsgw)"
+    print fcolor.BWhite + "    -smsgw  --smsgateway" + fcolor.BBlue + " <arg>\t" + fcolor.CReset + fcolor.White + "- Set SMS Gateway (Must to use with -ph)"
     print ""
     print fcolor.BGreen + "Examples: " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " --update"
     print fcolor.BGreen + "          " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " -i " + fcolor.BBlue + "wlan0"
     print fcolor.BGreen + "          " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " --iface " + fcolor.BBlue + "wlan1"
+    print fcolor.BGreen + "          " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " -surl " + fcolor.BBlue + "http://192.168.1.10:80/POST"
+    print fcolor.BGreen + "          " + fcolor.BYellow + "" + DScriptName + fcolor.BWhite + " -ph " + fcolor.BBlue + "0917330303" + fcolor.BWhite + " -smsgw " + fcolor.BBlue + "/dev/ttyUSB0"
     print ""
     DrawLine("-",fcolor.CReset + fcolor.Black,"","")
     print ""
-
+# Thesis Edited GetParameter
 def GetParameter(cmdDisplay):
     """
    cmdDisplay = "0" : Does not display help if not specified
                 "1" : Display help even not specified
                 "2" : Display Help, exit if error
     """
-    __builtin__.ReadPacketOnly="";__builtin__.LoopCount=99999999;__builtin__.SELECTED_IFACE="";__builtin__.SELECTED_MON="";__builtin__.SELECTED_ATK="";__builtin__.PRINTTOFILE="";__builtin__.ASSIGNED_MAC="";__builtin__.SPOOF_MAC="";__builtin__.AllArguments=""
+    __builtin__.ReadPacketOnly=""
+    __builtin__.LoopCount=99999999
+    __builtin__.SELECTED_IFACE=""
+    __builtin__.SELECTED_MON=""
+    __builtin__.SELECTED_ATK=""
+    __builtin__.PRINTTOFILE=""
+    __builtin__.ASSIGNED_MAC=""
+    __builtin__.SPOOF_MAC=""
+    __builtin__.AllArguments=""
     if cmdDisplay=="":
         cmdDisplay="0"
     Err=0
@@ -8580,6 +8681,81 @@ def GetParameter(cmdDisplay):
                     __builtin__.AllArguments=__builtin__.AllArguments + fcolor.BWhite + "Spoof MAC\t\t:  " + fcolor.BRed + "Enabled\n"
                     __builtin__.SPOOF_MAC="1"
                     Err=0
+                elif arg=="-surl" or arg=="--serverurl":
+                    i=i2
+                    if i2str=="":
+                        printc("!!!","Invalid Server URL set !","")
+                        Err=1
+                    else:
+                        Err=0
+                        if i2str[:1]!="-":
+                            if len(i2str)>=10:
+                                if CheckURL(i2str) == True:
+                                    __builtin__.sendToServer="Yes"
+                                    __builtin__.SERVER_URL=i2str
+                                    __builtin__.AllArguments=__builtin__.AllArguments + fcolor.BWhite + "Server URL\t\t:  " + fcolor.BRed + i2str + "\n"
+                                    SendConnectJson()
+
+                                else:
+                                    printc("!!!","Invalid Server URL set [ " + fcolor.BWhite + i2str + fcolor.BRed + " ] !","")
+                                    Err=1
+                            else:
+                                printc("!!!","Invalid Server URL set [ " + fcolor.BWhite + i2str + fcolor.BRed + " ] !", "")
+                                Err = 1
+                        else:
+                            printc("!!!", "Invalid Server URL set [ " + fcolor.BWhite + i2str + fcolor.BRed + " ] !","")
+                            Err = 1
+                elif arg=="-ph" or arg=="--phone":
+                    i=i2
+                    if i2str=="":
+                        printc("!!!","Invalid Phone number set !","")
+                        Err=1
+                    else:
+                        Err=0
+                        if i2str[:1]!="-":
+                            if len(i2str)<=14:
+                                Result = CheckPhone(i2str)
+                                if Result!="":
+                                    if __builtin__.SMS_GATEWAY!="":
+                                        __builtin__.sendSMS="Yes"
+                                    __builtin__.PHONE_NUMBER = Result
+                                    __builtin__.AllArguments=__builtin__.AllArguments + fcolor.BWhite + "SMS to Ph.Num\t\t:  " + fcolor.BRed + __builtin__.PHONE_NUMBER + "\n"
+                                else:
+                                    printc("!!!","Invalid Phone number set [ " + fcolor.BWhite + i2str + fcolor.BRed + " ] !","")
+                                    Err = 1
+                            else:
+                                printc("!!!","Invalid Phone number set [ " + fcolor.BWhite + i2str + fcolor.BRed + " ] !", "")
+                                Err = 1
+                        else:
+                            printc("!!!", "Invalid Phone number set [ " + fcolor.BWhite + i2str + fcolor.BRed + " ] !","")
+                            Err = 1
+                elif arg=="-smsgw" or arg=="--smsgateway":
+                    i = i2
+                    if i2str == "":
+                        printc("!!!", "Invalid SMS Gateway set !", "")
+                        Err = 1
+                    else:
+                        Err = 0
+                        if i2str[:1] != "-":
+                            if len(i2str) >= 12:
+                                if i2str[:11] == "/dev/ttyUSB":
+                                    if __builtin__.PHONE_NUMBER!="":
+                                        __builtin__.sendSMS="Yes"
+                                    __builtin__.SMS_GATEWAY = i2str
+                                    __builtin__.AllArguments = __builtin__.AllArguments + fcolor.BWhite + "SMS Gateway\t\t:  " + fcolor.BRed + __builtin__.SMS_GATEWAY + "\n"
+                                else:
+                                    printc("!!!",
+                                           "Invalid SMS Gateway set [ " + fcolor.BWhite + i2str + fcolor.BRed + " ] !",
+                                           "")
+                                    Err = 1
+                            else:
+                                printc("!!!",
+                                       "Invalid SMS Gateway set [ " + fcolor.BWhite + i2str + fcolor.BRed + " ] !", "")
+                                Err = 1
+                        else:
+                            printc("!!!", "Invalid SMS Gateway set [ " + fcolor.BWhite + i2str + fcolor.BRed + " ] !",
+                                   "")
+                            Err = 1
                 elif arg=="-m" or arg=="--mac":
                     i=i2
                     if i2str=="":
@@ -8686,6 +8862,7 @@ def GetParameter(cmdDisplay):
             printc ("i", fcolor.BCyan + "Entering Interactive Mode..","")
             result=DisplayTimeStamp("start","")
             print ""
+    SaveConfig("")
 
 def GetFileLine(filename,omitblank):
     if omitblank=="":
@@ -8711,6 +8888,21 @@ def GetFileLine(filename,omitblank):
                         lines=lines+1
                         __builtin__.UsableLine=lines
     return lines
+# Thesis URL Checker
+def CheckURL(URL):
+    urlparser = urlparse(URL)
+    if urlparser.scheme!="http" or urlparser.netloc=="":
+        return False
+    else:
+        return True
+# Thesis Check Phone Number
+def CheckPhone(PhoneNum):
+    if (len(PhoneNum) == 10 and PhoneNum[:2] == "09") or (len(PhoneNum) == 11 and PhoneNum[:2] == "01"):
+        return PhoneNum
+    elif (len(i2str)==13 and i2str[:5]=="+8409") or (len(i2str)==14 and i2str[:2]=="+8401"):
+        return PhoneNum[3:]
+    else:
+        return ""
 
 def CheckMAC(MACAddr):
     import string
@@ -8774,6 +8966,7 @@ def SelectInterfaceToUse():
                      Result=SelectInterfaceToUse()
                      return Result
                  else:
+                     SendDisconnectJson()
                      exit(0)
         Result=int(Result)-1
         __builtin__.SELECTED_IFACE=__builtin__.IFaceList[int(Result)]
@@ -8866,6 +9059,8 @@ def exit_gracefully(code=0):
     ShutDownAuditingWindows()
     printc (" ","","")
     printc ("*", fcolor.BRed + "Application shutdown !!","")
+    if __builtin__.sendToServer=="Yes":
+        SendDisconnectJson()
     if __builtin__.TimeStart!="":
         result=DisplayTimeStamp("summary-a","")
     if __builtin__.PrintToFile=="1":
@@ -9050,7 +9245,7 @@ def CreateDatabaseFiles():
             FoundDict=dictionary
     if FoundDict!="":
         __builtin__.DEFAULT_DICT=FoundDict
-    if IsFileDirExist(DBFile1)!="F" or IsFileDirExist(DBFile2)!="F" or IsFileDirExist(DBFile3)!="F" or IsFileDirExist(DBFile4)!="F" or IsFileDirExist(DBFile5)!="F" or IsFileDirExist(DBFile6)!="F" or IsFileDirExist(CrackDB)!="F" or IsFileDirExist(__builtin__.DEFAULT_DICT)!="F"  or IsFileDirExist(DBFile7)!="F" or IsFileDirExist(DBWPS_SeqA)!="F" or IsFileDirExist(DBWPS_SeqD)!="F" or IsFileDirExist(DBWPS_Half)!="F" or IsFileDirExist(DBWPS_Alt)!="F" or IsFileDirExist(DBWPS_Pos)!="F" or IsFileDirExist(DBWPS_PosD)!="F":
+    if IsFileDirExist(DBFile1)!="F" or IsFileDirExist(DBFile2)!="F" or IsFileDirExist(DBFile3)!="F" or IsFileDirExist(DBFile4)!="F" or IsFileDirExist(DBFile5)!="F" or IsFileDirExist(DBFile6)!="F" or IsFileDirExist(CrackDB)!="F" or IsFileDirExist(__builtin__.DEFAULT_DICT)!="F"  or IsFileDirExist(DBFile7)!="F" or IsFileDirExist(DBWPS_SeqA)!="F" or IsFileDirExist(DBWPS_SeqD)!="F" or IsFileDirExist(DBWPS_Half)!="F" or IsFileDirExist(DBWPS_Alt)!="F" or IsFileDirExist(DBWPS_Pos)!="F" or IsFileDirExist(DBWPS_PosD)!="F" or IsFileDirExist(JSFile1)!="F" or IsFileDirExist(JSFile2)!="F" or IsFileDirExist(JSFile3)!="F" or IsFileDirExist(JSFile4)!="F" or IsFileDirExist(JSFile5)!="F" or IsFileDirExist(JSFile6)!="F" or IsFileDirExist(JSFile7)!="F":
         print ""
         printc (".",fcolor.BGreen + "Creating database files....","")
         if IsFileDirExist(DBFile1)!="F":
@@ -9098,6 +9293,29 @@ def CreateDatabaseFiles():
         if IsFileDirExist(DBWPS_PosD)!="F":
             WriteData=str(__builtin__.WPS_PosD).replace(";","\x0a")
             open(DBWPS_PosD,"a+b").write(WriteData)
+        #New Json file create
+        if IsFileDirExist(JSFile1)!="F":
+            with open(JSFile1,mode="w") as jsf:
+                json.dump([], jsf)
+        if IsFileDirExist(JSFile2)!="F":
+            with open(JSFile2, mode='w') as jsf:
+                json.dump([], jsf)
+        if IsFileDirExist(JSFile3)!="F":
+            with open(JSFile3, mode='w') as jsf:
+                json.dump([], jsf)
+        if IsFileDirExist(JSFile4)!="F":
+            with open(JSFile4, mode='w') as jsf:
+                json.dump([], jsf)
+        if IsFileDirExist(JSFile5)!="F":
+            with open(JSFile5, mode='w') as jsf:
+                json.dump([], jsf)
+        if IsFileDirExist(JSFile6)!="F":
+            with open(JSFile6, mode='w') as jsf:
+                json.dump([], jsf)
+        if IsFileDirExist(JSFile7)!="F":
+            with open(JSFile7, mode='w') as jsf:
+                json.dump([], jsf)
+
         printc (".",fcolor.BGreen + "Done....","")
         print ""
     if os.stat(DBFile1)==0 or os.stat(DBFile2)==0 or os.stat(DBFile3)==0 or os.stat(DBFile4)==0 or os.stat(DBFile5)==0 or os.stat(DBFile1)==6:
@@ -9106,7 +9324,6 @@ def CreateDatabaseFiles():
         printc ("!!!","Script will not proceed..","")
         __builtin__.ERRORFOUND=1
         exit_gracefully(1)
-    
 
 def CheckAppLocation():
     import shutil
@@ -9123,6 +9340,12 @@ def CheckAppLocation():
     else:
         printd ("[" + dbdir + "] does not exist..")
         result=MakeTree(dbdir,"")
+        cpath=1
+    if os.path.exists(jsdir)==True:
+        printd ("[" + jsdir + "] exits..")
+    else:
+        printd ("[" + jsdir + "] does not exist..")
+        result=MakeTree(jsdir,"")
         cpath=1
     if os.path.exists(savedir)==True:
         printd ("[" + savedir + "] exist..")
@@ -12807,12 +13030,14 @@ def AddIfNotDuplicate(sName,sList):
     return tmpList
 
 def ReturnSpecifiedDir(sName):
-    if sName=="CAP" or sName=="PCAP" or sName=="TXT" or sName=="LOG" or sName=="DB" or sName=="MONITOR" or sName=="MON" or sName=="ATTACK" or sName=="ATK":
+    if sName=="CAP" or sName=="PCAP" or sName=="TXT" or sName=="LOG" or sName=="DB" or sName=="MONITOR" or sName=="MON" or sName=="ATTACK" or sName=="ATK" or sName=="JSON":
         __builtin__.lookupdir=""
         if sName=="CAP" or sName=="PCAP" or sName=="TXT":
             __builtin__.lookupdir=savedir
         if sName=="LOG" or sName=="DB":
             __builtin__.lookupdir=dbdir
+        if sName=="JSON":
+            __builtin__.lookupdir=jsdir
         if sName=="ATTACK" or sName=="ATK":
             __builtin__.lookupdir=attackdir
         if sName=="MONITOR" or sName=="MON":
@@ -12825,6 +13050,8 @@ def ReturnSpecifiedDir(sName):
             __builtin__.ExtList= ['log']
         if sName=="DB":
            __builtin__.ExtList= ['db']
+        if sName=="JSON":
+            __builtin__.ExtList= ['json']
         return __builtin__.lookupdir
     return ""
 
@@ -13094,8 +13321,7 @@ def ShowIntrusionPrevention(CMD):
     else:
         printc ("!",fcolor.BRed + "IPS DeAuth file not found !!","")
     return
-        
-
+# Thesis Edited IDS Detection
 def ShowIDSDetection(CMD):
     __builtin__.MSG_IDSDetection =""
     __builtin__.MSG_IDSDetectionOverAll =""
@@ -13118,6 +13344,18 @@ def ShowIDSDetection(CMD):
     AuthFloodMAC=""
     DetailInfo=fcolor.BBlue + "     [Details]\n"
     Breaks=DrawLine("-",fcolor.CReset + fcolor.Black,"","1")
+
+    # Thesis IDS detection var
+    if IsFileDirExist(JSAttackLog)!="F":
+        with open(JSAttackLog, mode='w') as jsf:
+            json.dump([], jsf)
+    if IsFileDirExist(JSAttackLog)=="F":
+        try:
+            __builtin__.JS_IDSDetectionOverAll = json.load(open(JSAttackLog,mode="r"))
+        except ValueError:
+            __builtin__.JS_IDSDetectionOverAll = []
+    attacksData = []
+
     if len(__builtin__.OfInterest_List)>0:
         x=0
         tmpInterestList=[]
@@ -13163,6 +13401,8 @@ def ShowIDSDetection(CMD):
             AddMACToList(ToMAC,List_AttackingMAC)
             AddMACToList(ToBSSID,List_AttackingMAC)
             PrivacyInfo=GetPrivacyInfo(FrMAC,ToMAC,ToBSSID,0)
+
+            #Association Flood
             if int(GET_ASSOC)>int(__builtin__.THRESHOLD_ASSOC) and int(GET_AUTH)<int(__builtin__.THRESHOLD_AUTH) and FrMAC!=ToBSSID:	# ASSOCIATION
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
                PACKET_SENT=GET_ASSOC + " Association " + fcolor.BGreen + " / " + fcolor.BRed + GET_AUTH + " Authentication " + fcolor.BGreen + " / " + fcolor.BRed + GET_DEAUTH + " DeAuth "
@@ -13183,6 +13423,7 @@ def ShowIDSDetection(CMD):
                MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
                MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #Authentication Flood
             if int(GET_ASSOC)<int(__builtin__.THRESHOLD_ASSOC) and int(GET_AUTH)>int(__builtin__.THRESHOLD_AUTH) and FrMAC!=ToBSSID:	# ASSOCIATION
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
                PACKET_SENT=GET_AUTH + " Authentication " + fcolor.BGreen + " / " + fcolor.BRed + GET_ASSOC + " Association " + fcolor.BGreen + " / " + fcolor.BRed + GET_DEAUTH + " DeAuth "
@@ -13221,6 +13462,7 @@ def ShowIDSDetection(CMD):
                MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
                MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #Association / Authentication Flood
             if int(GET_ASSOC)>int(__builtin__.THRESHOLD_ASSOC) and int(GET_AUTH)>int(__builtin__.THRESHOLD_AUTH) and FrMAC!=ToBSSID:	# ASSOCIATION
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
                PACKET_SENT=GET_ASSOC + " Association " + fcolor.BGreen + " / " + fcolor.BRed + GET_AUTH + " Authentication " + fcolor.BGreen + " / " + fcolor.BRed + GET_DEAUTH + " DeAuth "
@@ -13253,6 +13495,7 @@ def ShowIDSDetection(CMD):
                MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
                MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #WEP - ARP-Replay Request
             if int(GET_DATAARP)>int(__builtin__.THRESHOLD_DATAARP) and PrivacyInfo=="WEP":	# ARP 
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
                PACKET_SENT=GET_DATAARP
@@ -13265,6 +13508,7 @@ def ShowIDSDetection(CMD):
                MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
                MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #WEP - KoreK Chopchop
             if int(GET_DATA98)>int(__builtin__.THRESHOLD_DATA98):	# CHOPCHOP - GUESSING PROCESS
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
                PACKET_SENT=GET_DATA98
@@ -13295,6 +13539,7 @@ def ShowIDSDetection(CMD):
                MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                MACInfo=DisplayMACSInformation(ToBSSID,ToMAC,ToBSSID)
                MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #Rogue Access Point
             if len(GET_PROBEList)>1 and ToMAC=="FF:FF:FF:FF:FF:FF":		# ROGUE AP
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
                PACKET_SENT=GET_BEACON
@@ -13339,6 +13584,7 @@ def ShowIDSDetection(CMD):
                ToMAC="FF:FF:FF:FF:FF:FF"
                MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
                MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #TKIPTUN-NG Injection
             if int(GET_QOS)>int(__builtin__.THRESHOLD_QOS):	# TKIPTUN-NG
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
                PACKET_SENT=GET_QOS 
@@ -13354,6 +13600,7 @@ def ShowIDSDetection(CMD):
                MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                MACInfo=DisplayMACSInformation(ToMAC,ToBSSID,ToBSSID)
                MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #Deauthentication Attack
             if int(GET_DEAUTH_AC)>int(__builtin__.THRESHOLD_DEAUTH_AC): # and int(GET_DISASSOC)==0:	# DEAUTH - A
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
                PACKET_SENT=GET_DEAUTH_AC
@@ -13373,6 +13620,7 @@ def ShowIDSDetection(CMD):
                MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
                MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #MDK3 - WPA Downgrade Test / Deauthentication/Disassociation Amok Mode
             if int(GET_DEAUTH_AC)>0 and int(GET_DISASSOC)>1 and int(GET_DEAUTH)==0:	# WPA DOWNGRADE
                PrivacyInfo=GetPrivacyInfo(FrMAC,ToMAC,ToBSSID,0)
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
@@ -13395,6 +13643,7 @@ def ShowIDSDetection(CMD):
                    MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                    MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
                    MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #WPS - PIN Bruteforce Attempting
             if int(GET_EAPOL_START)>int(__builtin__.THRESHOLD_EAPOL_START) and FrMAC!=ToBSSID and int(GET_EAPOL_START)>int(GET_WPS):	# REAVER - WPS - EAPOL START
                WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
                PACKET_SENT=GET_EAPOL_START + " EAPOL Start" + fcolor.BGreen + " / " + fcolor.BRed + GET_WPS + " EAP Request "
@@ -13409,6 +13658,7 @@ def ShowIDSDetection(CMD):
                MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
                MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+            #WPS - PIN Bruteforce
             if int(GET_WPS)>int(__builtin__.THRESHOLD_WPS) or int(GET_EAPOL_START)>int(__builtin__.THRESHOLD_EAPOL_START):   # and FrMAC!=ToBSSID:	# REAVER - WPS
                if FrMAC!=ToBSSID:
                    WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3=""
@@ -13424,7 +13674,12 @@ def ShowIDSDetection(CMD):
                    MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
                    MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
                    MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
+
             __builtin__.MSG_IDSDetectionOverAll=__builtin__.MSG_IDSDetectionOverAll+RemoveDoubleLF(str(MSG_ATTACK)) #+ str(Breaks) + "\n"
+            # Thesis Attack Data Add
+            if (WarningCount>0):
+                attacksData.append(IDSDetectionToJson(WarningCount, ATTACK_TYPE, sData, PACKET_SENT, NotesInfo1, NotesInfo2, NotesInfo3, FrMAC, "", ToMAC, "", ToBSSID, ""))
+
             x += 1
     
     ## TESTING ---- MDK3 BEACON FLOODING WITH DIFFERENT ESSID = mdk3 mon0 b 
@@ -13448,6 +13703,13 @@ def ShowIDSDetection(CMD):
         MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
         MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
         __builtin__.MSG_IDSDetectionOverAll=__builtin__.MSG_IDSDetectionOverAll+RemoveDoubleLF(str(MSG_ATTACK)) #+ str(Breaks) + "\n"
+        # Thesis vars value
+        jsFrMACDetails = "ESSIDs Found : " + str(TotalProbe)
+        jsToMAC = "FF:FF:FF:FF:FF:FF"
+        jsToMACDetails = "Channels : " + str(BeaconChannel) + " Privacy : " + str(BeaconPrivacy)
+        # Thesis Attack Data Add
+        attacksData.append(IDSDetectionToJson(WarningCount,ATTACK_TYPE,sData,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3,ProbeMAC,jsFrMACDetails,jsToMAC,jsToMACDetails,"",""))
+
         F5M=str(ProbeMAC[:5])
         RemoveFloodedAP("",str(F5M))
     ## TESTING ---- MDK3 BEACON FLOODING WITH SIMILAR ESSID = mdk3 mon0 b -n AAAAAA
@@ -13508,6 +13770,14 @@ def ShowIDSDetection(CMD):
                 MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,"",NotesInfo1,NotesInfo2,NotesInfo3)
                 MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
                 __builtin__.MSG_IDSDetectionOverAll=__builtin__.MSG_IDSDetectionOverAll+RemoveDoubleLF(str(MSG_ATTACK)) #+ str(Breaks) + "\n"
+                # Thesis vars value
+                jsFrMACDetails = "BSSIDs Found : " + str(BSSIDCt)
+                jsToMAC = "FF:FF:FF:FF:FF:FF"
+                jsToMACDetails = "Similar ESSID Found : " + str(SimilarCt) + " Channels : " + str(SimilarChannel) + "  Privacy: " + str(SimilarPrivacy)
+                # Thesis Attack Data Add
+                attacksData.append(IDSDetectionToJson(WarningCount,ATTACK_TYPE,sData,"",NotesInfo1,NotesInfo2,NotesInfo3,SimilarBSSID,jsFrMACDetails,jsToMAC,jsToMACDetails,"",""))
+
+
                 RemoveFloodedAP(Similar_ESSID[x],"")
             x += 1
     
@@ -13553,6 +13823,15 @@ def ShowIDSDetection(CMD):
         MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,"",NotesInfo1,NotesInfo2,NotesInfo3)
         MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
         __builtin__.MSG_IDSDetectionOverAll=__builtin__.MSG_IDSDetectionOverAll+RemoveDoubleLF(str(MSG_ATTACK))
+
+        # Thesis vars value
+        jsFrMAC = RemoveColor(StationID)
+        jsFrMACDetails = "Stations with Single Probe : " + str(SingleProbe)
+        jsToMAC = "FF:FF:FF:FF:FF:FF"
+        jsToMACDetails = "Probes : " + RemoveColor(ProbedESSID) + " Probes with same ESSID length : " + str(SimilarProbeCt)
+        # Thesis Attack Data Add
+        attacksData.append(IDSDetectionToJson(WarningCount, ATTACK_TYPE, sData, "", NotesInfo1, NotesInfo2, NotesInfo3,         jsFrMAC, jsFrMACDetails, jsToMAC, jsToMACDetails, "", ""))
+
         RemoveUnassociatedClient("")
         MSG_ATTACK=""
     ## TESTING ---- MDK3 WIDS/WIPS/WDS CONFUSION = mdk3 mon0 w -e Test -c 6
@@ -13570,16 +13849,33 @@ def ShowIDSDetection(CMD):
             ATTACK_TYPE="MDK3 - WIDS/WIPS/WDS Confusion Mode - Single"
             sData=fcolor.BGreen + "[ " + fcolor.BRed + "Broadcast" + fcolor.BGreen + " ] authentication flood to [ " + fcolor.BCyan + str(ConfuseWDSMAC) + fcolor.BGreen + " ]"
             MACInfo=DisplayMACSInformation(FrMAC,ToMAC,ToBSSID)
+
+            # Thesis vars value
+            jsFrMAC = FrMAC
+            jsToMAC = ToMAC
+            jsToBSSID = ToBSSID
+            jsToBSSIDDetails = ConfuseWDSMAC
         else:
             ATTACK_TYPE="MDK3 - WIDS/WIPS/WDS Confusion Mode - Multiple"
             sData=fcolor.BGreen + "[ " + fcolor.BRed + "Broadcast" + fcolor.BGreen + " ] authentication flood to [ " + fcolor.BPink + "Multiple Access Points" + fcolor.BGreen + " ]"
             MACInfo = "     " + fcolor.SWhite + "  A.Points [ " + fcolor.BGreen + str(ConfuseWDSListCt) + "" + fcolor.SWhite + " ] - " + fcolor.BCyan + ConfuseWDSList + "\n"
             MACInfo = MACInfo + "     " + fcolor.SWhite + "  Detected [ " + fcolor.BRed + str(ConfuseWDS) + fcolor.SGreen + " Affected Access Points (Authentication Flooding)" + fcolor.SWhite + " ]\n"
+
+            # Thesis vars value
+            jsFrMAC = "FF:FF:FF:FF:FF:FF"
+            jsToMAC = ""
+            jsToBSSID = RemoveColor(ConfuseWDSList)
+            jsToBSSIDDetails = str(ConfuseWDS) + " Affected Access Points (Authentication Flooding)"
+
         PACKET_SENT=ConfuseWDSPkt
         MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
         MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
         __builtin__.MSG_IDSDetectionOverAll=__builtin__.MSG_IDSDetectionOverAll+RemoveDoubleLF(str(MSG_ATTACK))
-        RemoveFloodedAP("<NONE>","")
+
+        # Thesis Attack Data Add
+        attacksData.append(IDSDetectionToJson(WarningCount, ATTACK_TYPE, sData, PACKET_SENT, NotesInfo1, NotesInfo2, NotesInfo3, jsFrMAC, "", jsToMAC, "", jsToBSSID, jsToBSSIDDetails))
+
+        RemoveFloodedAP("<NONE>", "")
         MSG_ATTACK=""
     ## TESTING ---- MDK3 AUTHENTICATION FLOOD TO ALL ACCESS POINTS = mdk3 mon0 a
     if AuthFlood>3:
@@ -13601,9 +13897,15 @@ def ShowIDSDetection(CMD):
         MSG_ATTACK=MSG_ATTACK + DisplayAttackMsg(WarningCount,ATTACK_TYPE, sData ,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3)
         MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
         __builtin__.MSG_IDSDetectionOverAll=__builtin__.MSG_IDSDetectionOverAll+RemoveDoubleLF(str(MSG_ATTACK))
+
+        # Thesis vars value
+        jsFrMAC = str(AuthFloodMAC)
+        jsToBSSID = RemoveColor(AuthFloodList)
+        jsToBSSIDDetails = "Affected APs : " + str(AuthFloodListCt)
+        # Thesis Attack Data Add
+        attacksData.append(IDSDetectionToJson(WarningCount, ATTACK_TYPE, sData, PACKET_SENT, NotesInfo1, NotesInfo2, NotesInfo3,  jsFrMAC, "", "", "", jsToBSSID, jsToBSSIDDetails))
+
         MSG_ATTACK=""
- 
- 
     ## TESTING ---- MDK3 AUTHENTICATION FLOODING WITH CLIENTS = mdk3 mon0 a -a <AP MAC> -m
     x=0
     DoSAP=0
@@ -13624,9 +13926,19 @@ def ShowIDSDetection(CMD):
             MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
             __builtin__.MSG_IDSDetectionOverAll=__builtin__.MSG_IDSDetectionOverAll+RemoveDoubleLF(str(MSG_ATTACK))
             RemoveUnassociatedClient(str(__builtin__.ListInfo_BSSID[x]))
+
+            # Thesis vars value
+            jsFrMAC = "FF:FF:FF:FF:FF:FF"
+            jsFrMACDetails = "Multiple Stations MAC"
+            jsToBSSID = str(__builtin__.ListInfo_BSSID[x])
+            PACKET_SENT = str(__builtin__.ListInfo_ConnectedClient[x]) + " Clients"
+            # Thesis Attack Data Add
+            attacksData.append(IDSDetectionToJson(WarningCount, ATTACK_TYPE, sData, PACKET_SENT, NotesInfo1, NotesInfo2, NotesInfo3,  jsFrMAC, jsFrMACDetails, "", "", jsToBSSID, ""))
+
             DoSAP=DoSAP+1
         x += 1
     MSG_ATTACK=""
+
     ## TESTING ---- MDK3 AUTHENTICATION FLOODING WITH CLIENTS TO MULTIPLE AP = mdk3 mon0 a -m
     if DoSAP>1:
         WarningCount=WarningCount+1;NotesInfo1="";NotesInfo2="";NotesInfo3="";MACInfo="";MSG_ATTACK=""
@@ -13644,19 +13956,167 @@ def ShowIDSDetection(CMD):
         MACInfo = "     " + fcolor.SWhite + "  A.Points [ " + fcolor.BGreen + str(DoSAPListCt) + "" + fcolor.SWhite + " ] - " + fcolor.BCyan + DoSAPList + "\n"
         MSG_ATTACK=MSG_ATTACK + "" + DetailInfo + MACInfo+ "\n" + Breaks + "\n"
         __builtin__.MSG_IDSDetectionOverAll=__builtin__.MSG_IDSDetectionOverAll+RemoveDoubleLF(str(MSG_ATTACK))
+
+        # Thesis vars value
+        jsFrMAC = "FF:FF:FF:FF:FF:FF"
+        jsFrMACDetails = "Multiple Stations MAC"
+        jsToBSSID = RemoveColor(DoSAPList)
+        jsToBSSIDDetails = "Affected Access Points : " + str(DoSAPListCt)
+
+        # Thesis Attack Data Add
+        attacksData.append(IDSDetectionToJson(WarningCount, ATTACK_TYPE, sData, PACKET_SENT, NotesInfo1, NotesInfo2, NotesInfo3,jsFrMAC, jsFrMACDetails, "", "", jsToBSSID, jsToBSSIDDetails))
+
     MSG_ATTACK=""
-    if int(WarningCount)>0 and __builtin__.SHOW_IDS=="Yes":
-        BeepSound()
-        CenterText(fcolor.BGIRed + fcolor.BWhite,"< < <<  WARNING !!! - POSSIBLE ATTACKS DETECTED  >> > >      ")
-        print ""
-        __builtin__.MSG_IDSDetectionOverAll=__builtin__.MSG_IDSDetectionOverAll + "" + fcolor.BWhite + "Total Warning : " + fcolor.BRed + str(WarningCount) + "\n" + fcolor.SCyan + "Reported : " + str(Now()) + "\n"
-        print str(__builtin__.MSG_IDSDetectionOverAll)
-        WriteAttackLog(__builtin__.MSG_IDSDetectionOverAll + "\n")
-        __builtin__.MSG_AttacksLogging=str(__builtin__.MSG_AttacksLogging) + str(__builtin__.MSG_IDSDetectionOverAll) + "\n"
-        __builtin__.MSG_CombinationLogs=str(__builtin__.MSG_CombinationLogs) + str(__builtin__.MSG_IDSDetectionOverAll) + "\n"
-        if __builtin__.SAVE_ATTACKPKT=="Yes":
-            SaveFilteredMAC(List_AttackingMAC,"ATTACK*",attackdir)
-        LineBreak()
+
+    # Thesis IDS Detection Logs
+    if int(WarningCount)>0:
+        if __builtin__.SHOW_IDS == "Yes":
+            BeepSound()
+            CenterText(fcolor.BGIRed + fcolor.BWhite, "< < <<  WARNING !!! - POSSIBLE ATTACKS DETECTED  >> > >      ")
+            print ""
+            __builtin__.MSG_IDSDetectionOverAll = __builtin__.MSG_IDSDetectionOverAll + "" + fcolor.BWhite + "Total Warning : " + fcolor.BRed + str(
+                WarningCount) + "\n" + fcolor.SCyan + "Reported : " + str(Now()) + "\n"
+            print str(__builtin__.MSG_IDSDetectionOverAll)
+            WriteAttackLog(__builtin__.MSG_IDSDetectionOverAll + "\n")
+            __builtin__.MSG_AttacksLogging = str(__builtin__.MSG_AttacksLogging) + str(
+                __builtin__.MSG_IDSDetectionOverAll) + "\n"
+            __builtin__.MSG_CombinationLogs = str(__builtin__.MSG_CombinationLogs) + str(
+                __builtin__.MSG_IDSDetectionOverAll) + "\n"
+            if __builtin__.SAVE_ATTACKPKT == "Yes":
+                SaveFilteredMAC(List_AttackingMAC, "ATTACK*", attackdir)
+            LineBreak()
+
+        # Thesis Attack log to file
+        if __builtin__.saveToJson=="Yes":
+            # Thesis end create json attack log
+            jsonFileData = {}
+            jsonFileData['Warnings'] = str(WarningCount)
+            jsonFileData['Reported'] = str(Now())
+            jsonFileData['AttacksLog'] = attacksData
+            jsonFileData['WIDS'] = socket.gethostname()
+            __builtin__.JS_IDSDetectionOverAll.append(jsonFileData)
+            jsonTofile(JSAttackLog, __builtin__.JS_IDSDetectionOverAll)
+
+        # Thesis Attack Json to Server
+        if __builtin__.sendToServer=="Yes" and __builtin__.SERVER_URL!="":
+            if SendJsonToServer(jsonFileData,"attacks") == 200:
+                printc("i","Attack json sent successfully!","")
+            else:
+                printc("!","Attack json sent failure!","")
+
+        # Thesis Attack Json to SMS
+        if __builtin__.PHONE_NUMBER!="" and __builtin__.SMS_GATEWAY!="" and __builtin__.sendSMS=="Yes":
+            if IDSDetectionToSMS(jsonFileData) == True:
+                printc("i","SMS Sent Successfully!","")
+            else:
+                printc("i", "SMS Sent Failure!", "")
+            #t1 = threading.Thread(target = IDSDetectionToSMS(jsonFileData))
+            #t1.start()
+            #t1.join()
+# Thesis IDS Detection to JSon
+def IDSDetectionToJson(WarningCount,ATTACK_TYPE,sData,PACKET_SENT,NotesInfo1,NotesInfo2,NotesInfo3,FrMAC,FrMACDetails,ToMAC,ToMACDetails,ToBSSID,ToBSSIDDetails):
+    # Thesis vars value
+    jsFrMAC = str(FrMAC)
+    if FrMACDetails == "":
+        jsFrMACDetails = ' '.join(
+            ("OUI : " + RemoveColor(DisplayOUIDetail(FrMAC,fcolor.BBlack)) + " Signal : " + GetSignal(FrMAC)).split())
+    else:
+        jsFrMACDetails = FrMACDetails
+
+    jsToMAC = str(ToMAC)
+    if ToMACDetails == "":
+        if jsToMAC != "":
+            jsToMACDetails = ' '.join(("OUI : " + RemoveColor(DisplayOUIDetail(ToMAC,fcolor.BBlack)) + " Signal : " + GetSignal(ToMAC)).split())
+        else:
+            jsToMACDetails = ""
+    else:
+        jsToMACDetails = ToMACDetails
+
+    jsToBSSID = str(ToBSSID)
+    if ToBSSIDDetails == "":
+        if jsToBSSID != "":
+            jsToBSSIDDetails = ' '.join(("OUI : " + RemoveColor(DisplayOUIDetail(ToBSSID,fcolor.BBlack)) + " Name : " + GetESSID(
+                ToBSSID) + " Signal : " + GetSignal(ToBSSID) + RemoveColor(DisplaySSIDDetail(ToBSSID))).split())
+    else:
+        jsToBSSIDDetails = ToBSSIDDetails
+
+    if ToMAC == ToBSSID:
+        jsToMAC = ""
+        jsToMACDetails = ""
+    elif FrMAC == ToBSSID:
+        jsFrMAC = jsToBSSID
+        jsFrMACDetails = jsToBSSIDDetails
+        jsToBSSID = ""
+        jsToBSSIDDetails = ""
+
+    attNotes = ""
+    if NotesInfo1 != "":
+        attNotes += NotesInfo1
+    if NotesInfo2 != "":
+        attNotes = attNotes + "\n" + NotesInfo2
+    if NotesInfo3 != "":
+        attNotes = attNotes + "\n" + NotesInfo3
+
+    # Thesis Json convert
+    jsonData = {}
+    jsonData['No.'] = str(WarningCount)
+    jsonData['AttType'] = str(ATTACK_TYPE)
+    jsonData['AttDetails'] = RemoveColor(sData)
+    jsonData['AttNotes'] = RemoveColor(attNotes)
+    jsonData['Packets'] = RemoveColor(PACKET_SENT)
+    jsonData['FrMAC'] = RemoveColor(jsFrMAC)
+    jsonData['FrMACInfo'] = RemoveColor(jsFrMACDetails)
+    jsonData['ToMAC'] = RemoveColor(jsToMAC)
+    jsonData['ToMACInfo'] = RemoveColor(jsToMACDetails)
+    jsonData['ToBSSID'] = RemoveColor(jsToBSSID)
+    jsonData['ToBSSIDInfo'] = RemoveColor(jsToBSSIDDetails)
+
+    return jsonData
+# Thesis IDS Dection to Server
+def SendJsonToServer(jsonData,jsonType):
+    if __builtin__.SERVER_URL!="":
+        url = __builtin__.SERVER_URL
+        data = ""
+        if isinstance(jsonData,list) == False:
+            tmpdata = []
+            tmpdata.append(jsonData)
+            data = json.dumps(tmpdata) #urllib.quote()
+        else:
+            data = json.dumps(jsonData)
+
+        headers = {'Content-type':'application/json', 'Json-type':jsonType, 'Accept':'text/plain'}
+        r = requests.post(url, data=data, headers=headers)
+        return r.status_code
+    else:
+        return ""
+# Thesis IDS Detection to SMS
+def IDSDetectionToSMS(jsonData):
+    count = int(jsonData['Warnings'])
+    i = 0
+    messages = "Detection from " + socket.gethostname() + ":\n"
+    while i < count:
+        Num = str(jsonData['AttacksLog'][i]['No.'])
+        AttType = str(jsonData['AttacksLog'][i]['AttType'])
+        if jsonData['AttacksLog'][i]['ToBSSID'] != "":
+            AP = str(GetESSID(jsonData['AttacksLog'][i]['ToBSSID']))
+        elif jsonData["AttacksLog"][i]['ToMAC'] != "":
+            AP = str(GetESSID(jsonData['AttacksLog'][i]['ToMAC']))
+        else:
+            AP = "Broadcast"
+        messages = messages + "|" + Num + "| " + AttType + " on " + AP + "\n"
+        i += 1
+    try:
+        SerialPort=serial.Serial(__builtin__.SMS_GATEWAY,19200)
+        SerialPort.write('AT+CMGF=1\r')
+        time.sleep(1)
+        SerialPort.write('AT+CMGS="'+__builtin__.PHONE_NUMBER+'"\r')
+        time.sleep(1)
+        SerialPort.write(messages + "\x1A")
+        time.sleep(1)
+        SerialPort.close()
+    except:
+        return False
+    return True
 
 def ShowAnalysedListing(usr_resp):
     spacing=""
@@ -14084,8 +14544,6 @@ def PacketAnalysis():
     ReadCommand()
     LineBreak()
     return
-  
- 
 
 def TCPDump_ExtractDetail(DataList,rawline):
     x=0
@@ -15331,11 +15789,16 @@ def WriteDBFile():
     if int(__builtin__.UPDATE_STN_COUNT)>=int(__builtin__.TIMES_BEFORE_UPDATE_STN_DB):
         __builtin__.UPDATE_STN_COUNT=0
         WriteAllStationDB()
-
+# Thesis edited Write AccessPoint to Json
 def WriteAccessPointDB():
     SkipWrite=0
     x=0
     AddData=0
+    try:
+        WriteJson = json.load(open(JSFile2,mode="r"))
+    except ValueError:
+        WriteJson = []
+
     while x<len(ListInfo_BSSID):
         WriteFile=0
         if int(__builtin__.ListInfo_BSSIDTimes[x])>=int(__builtin__.TIMES_BEFORE_UPDATE_AP_DB):
@@ -15377,14 +15840,66 @@ def WriteAccessPointDB():
                     WriteData=WriteData + str(Now()) + str(col)
                     WriteData=WriteData + str(ListInfo_ESSID[x]) + str(col) + "\n"
                     open(DBFile2,"a+b").write(WriteData)
+
+                    # Thesis Create Json
+                    jsonData = {}
+                    jsonData['BSSID'] = str(ListInfo_BSSID[x])
+                    jsonData['Enriched'] = str(ListInfo_Enriched[x])
+                    jsonData['Mode'] = str(ListInfo_Mode[x])
+                    jsonData['FirstSeen'] = str(ListInfo_FirstSeen[x])
+                    jsonData['LastSeen'] = str(ListInfo_LastSeen[x])
+                    jsonData['Channel'] = str(ListInfo_Channel[x])
+                    jsonData['Privacy'] = str(ListInfo_Privacy[x])
+                    jsonData['Cipher'] = str(ListInfo_Cipher[x])
+                    jsonData['Authentication'] = str(ListInfo_Auth[x])
+                    jsonData['MaxRate'] = str(ListInfo_MaxRate[x])
+                    jsonData['BitRates'] = str(ListInfo_BitRate[x])
+                    jsonData['Power'] = str(ListInfo_BestQuality[x])
+                    jsonData['GPSLat'] = str(ListInfo_GPSBestLat[x])
+                    jsonData['GPSLon'] = str(ListInfo_GPSBestLon[x])
+                    jsonData['GPSAlt'] = str(ListInfo_GPSBestAlt[x])
+                    jsonData['WPS'] = str(ListInfo_WPS[x])
+                    jsonData['WPSVer'] = str(ListInfo_WPSVer[x])
+                    jsonData['Reported'] = str(Now())
+                    jsonData['ESSID'] = str(ListInfo_ESSID[x])
+                    jsonData['WIDS'] = socket.gethostname()
+                    #Append json object to a list
+                    #if jsonData['ESSID'] != "":
+                    WriteJson.append(jsonData)
+
         x += 1
 
+    # Thesis APs log to file
+    if __builtin__.saveToJson == "Yes":
+        # Thesis Write to json AccessPoint.json
+        jsonTofile(JSFile2, WriteJson)
+
+    # Thesis Attack Json to Server
+    if __builtin__.sendToServer == "Yes" and __builtin__.SERVER_URL != "":
+        if SendJsonToServer(WriteJson,"accesspoint") == 200:
+            printc("i","Access Point json sent successfully!","")
+        else:
+            printc("!","Access Point json sent failure!","")
+# Thesis Edited Write Others DB to Json
 def WriteAllStationDB():
     AddData=0
     AddData3=0
     AddData4=0
     x=0
     SkipWrite=0
+    try:
+        WriteJson3 = json.load(open(JSFile3, mode="r"))
+    except ValueError:
+        WriteJson3 = []
+    try:
+        WriteJson4 = json.load(open(JSFile4, mode="r"))
+    except ValueError:
+        WriteJson4 = []
+    try:
+        WriteJson5 = json.load(open(JSFile5, mode="r"))
+    except ValueError:
+        WriteJson5 = []
+
     while x<len(ListInfo_STATION):
         ESSID=FindESSID(ListInfo_CBSSID[x])
         SkipWrite=0
@@ -15411,7 +15926,16 @@ def WriteAllStationDB():
                         WriteData=WriteData + str(ListInfo_CBSSID[x]) + str(col) 
                         WriteData=WriteData + str(ESSID) + str(col) + "\n"
                         open(DBFile5,"a+b").write(WriteData)
+                        #Create Json Data
+                        jsonData = {}
+                        jsonData['Station'] = str(ListInfo_STATION[x])
+                        jsonData['ConnectedBSSID'] = str(ListInfo_CBSSID[x])
+                        jsonData['ConnectedESSID'] = str(ESSID)
+                        jsonData['WIDS'] = socket.gethostname()
+                        # Append json object to a list
+                        WriteJson5.append(jsonData)
                 f.close()
+
             if ListInfo_STATION[x]!="":
                 SkipWrite=0
                 with open(DBFile3,"r") as f:
@@ -15437,7 +15961,21 @@ def WriteAllStationDB():
                         WriteData=WriteData + str(Now()) + str(col)
                         WriteData=WriteData + str(ESSID) + str(col) + "\n"
                         open(DBFile3,"a+b").write(WriteData)
+
+                        # Create Json Data
+                        jsonData = {}
+                        jsonData['Station'] = str(ListInfo_STATION[x])
+                        jsonData['ConnectedBSSID'] = str(ListInfo_CBSSID[x])
+                        jsonData['FirstSeen'] = str(ListInfo_CFirstSeen[x])
+                        jsonData['LastSeen'] = str(ListInfo_CLastSeen[x])
+                        jsonData['Power'] = str(ListInfo_CBestQuality[x])
+                        jsonData['Reported'] = str(Now())
+                        jsonData['ConnectedESSID'] = str(ESSID)
+                        jsonData['WIDS'] = socket.gethostname()
+                        # Append json object to a list
+                        WriteJson3.append(jsonData)
                 f.close()
+
             if ListInfo_PROBE[x]!="":
                 tmpProbeList=[]
                 tmpProbeList=str(ListInfo_PROBE[x]).split(" / ")
@@ -15464,10 +16002,50 @@ def WriteAllStationDB():
                                 WriteData=WriteData + str(Now()) + str(col)
                                 WriteData=WriteData + str(ProbeName) + str(col) + "\n"
                                 open(DBFile4,"a+b").write(WriteData)
+
+                                # Create Json Data
+                                jsonData = {}
+                                jsonData['Station'] = str(ListInfo_STATION[x])
+                                jsonData['Reported'] = str(Now())
+                                jsonData['ProbesName'] = str(ProbeName)
+                                jsonData['WIDS'] = socket.gethostname()
+                                # Append json object to a list
+                                WriteJson4.append(jsonData)
                         f.close()
                     y += 1
         x += 1
+
+    # Thesis Attack log to file
+    if __builtin__.saveToJson == "Yes":
+        # Write to json file Station.json
+        jsonTofile(JSFile3, WriteJson3)
+        # Write Json to Probes.json
+        jsonTofile(JSFile4, WriteJson4)
+        # Write to json file ConnectHistory.json
+        jsonTofile(JSFile5, WriteJson5)
+
+    # Thesis Attack Json to Server
+    if __builtin__.sendToServer == "Yes" and __builtin__.SERVER_URL != "":
+        if SendJsonToServer(WriteJson3, "station") == 200:
+            printc("i","Station json sent successfully!","")
+        else:
+            printc("i","Station json sent failure!","")
+        if SendJsonToServer(WriteJson4, "probes") == 200:
+            printc("i","Probes json sent successfully!","")
+        else:
+            printc("i","Probes json sent failure!","")
+        if SendJsonToServer(WriteJson5, "connecthistory") == 200:
+            printc("i","Connect History json sent successfully!","")
+        else:
+            printc("i","Connect History json sent failure!","")
+
     return
+# Thesis Write Json to file function
+def jsonTofile(JsonFile,JsonData):
+
+    # Write to json file Station
+    with open(JsonFile, mode="w") as jsf:
+        json.dump(JsonData, jsf)
 
 def ServiceCheck(SvrName,DisplaySvrName, cmdPrompt,cmdDisplay):
     """
@@ -16113,6 +16691,13 @@ def DisplayESSIDDetail(MACAddr,MACColor):
     Result=ColorStd2 + "  BSSID    [ " + MACColor + str(MACAddr) + ColorStd2 + " ]'s Name is [ " + fcolor.BYellow + str(ESSID) + ColorStd2 + " ].\n"
     return Result
 
+# Thesis GetESSID
+def GetESSID(MACAddr):
+    ESSID = FindESSID(MACAddr)
+    if ESSID == "":
+        ESSID ="<<NO NAME>>"
+    return ESSID
+
 def DisplaySSIDDetail(MACAddr):
     i=0
     Result=""
@@ -16188,17 +16773,31 @@ def CheckWhitelist(sVal):
     if str(__builtin__.WhiteMACList).find("'" + sVal + "'")!=-1 or str(__builtin__.WhiteNameList).find("'" + sVal + "'")!=-1:
         return sVal
     return ""
-
+#Thesis Edited IDS Cautious Logs
 def CheckDiffBSSIDConnection():
     x=0
     __builtin__.MSG_DiffBSSIDConnection=""
     __builtin__.MSG_NoAssocConnection=""
     __builtin__.MSG_APnClient=""
     __builtin__.MSG_EvilTwins=""
+
+    # Thesis IDS Cautious var
+    if IsFileDirExist(JSCautiousLog) != "F":
+        with open(JSCautiousLog, mode='w') as jsf:
+            json.dump([], jsf)
+    if IsFileDirExist(JSCautiousLog) == "F":
+        try:
+            __builtin__.JS_CautiousListing = json.load(open(JSCautiousLog, mode="r"))
+        except ValueError:
+            __builtin__.JS_CautiousListing = []
+    cautiousData = []
+
     tmpAll_ESSID=[]
     ColorSeen=fcolor.SBlue
     CautiousCount=0
     x=0
+
+
     while x < len(ListInfo_ESSID):
         tmpAll_ESSID.append (ListInfo_ESSID[x])
         x += 1
@@ -16212,11 +16811,14 @@ def CheckDiffBSSIDConnection():
             if len(str(x))==2:
                 spacer=" "
             y=0
+            similarcount=0
             bssidct=0
             CautiousCount += 1
             __builtin__.MSG_EvilTwins=__builtin__.MSG_EvilTwins + fcolor.SWhite + "[" + fcolor.BRed + str(CautiousCount) + fcolor.SWhite + "]" + spacer + fcolor.BGreen + "SSID Name   [ " + fcolor.BPink + str(Similar_ESSID[x]) + fcolor.BGreen + " ]\n"
+            textCautious = "SSID Name   [ " + str(Similar_ESSID[x]) + " ]\n"
             while y<len(ListInfo_ESSID):
                 if ListInfo_ESSID[y]==Similar_ESSID[x]:
+                    similarcount+=1
                     BSSID=ListInfo_BSSID[y]
                     BSSIDOUI=Check_OUI(BSSID,"")
                     BSSIDSIGNAL=__builtin__.ListInfo_BestQuality[y] + " dBm / " + RemoveColor(__builtin__.ListInfo_QualityRange[y])
@@ -16231,16 +16833,29 @@ def CheckDiffBSSIDConnection():
                     bssidct +=1
                     if CONNECTED_CLIENT!="":
                         CONNECTED_CLIENT=ReplaceSlash(CONNECTED_CLIENT,fcolor.SBlue,fcolor.SWhite)
-                    BSSIDText=fcolor.BWhite + str(ConvertNoToAlpha(bssidct)) + ". " + fcolor.BBlue + "BSSID    " + fcolor.SWhite + "[ " + fcolor.BYellow + str(BSSID) + fcolor.SWhite + " ] - Signal : " + fcolor.BGreen + BSSIDSIGNAL.ljust(24) + "" + fcolor.SCyan + str(BSSIDOUI) + "\n"
+                    BSSIDText=fcolor.BWhite + "\t" + str(ConvertNoToAlpha(bssidct)) + ". " + fcolor.BBlue + "BSSID    " + fcolor.SWhite + "[ " + fcolor.BYellow + str(BSSID) + fcolor.SWhite + " ] - Signal : " + fcolor.BGreen + BSSIDSIGNAL.ljust(24) + fcolor.SWhite + " - OUI : " + fcolor.SCyan + str(BSSIDOUI) + "\n"
                     BSSIDText=BSSIDText.replace(" / Good",fcolor.SWhite + " / " + fcolor.SGreen + "Good").replace(" / Average",fcolor.SWhite + " / " + fcolor.SYellow + "Average").replace(" / Poor",fcolor.SWhite + " / " + fcolor.SRed + "Poor").replace(" / Unknown",fcolor.SBlack + " / " + fcolor.SGreen + "Unknown").replace(" / V.Good",fcolor.BGreen + " / " + fcolor.SGreen + "V.Good")
                     __builtin__.MSG_EvilTwins=__builtin__.MSG_EvilTwins + "   " + spacer + BSSIDText
                     __builtin__.MSG_EvilTwins = __builtin__.MSG_EvilTwins + "      " + str(DisplaySSIDDetail(BSSID))
                     if CONNECTED_CLIENT_CT==0:
-                        __builtin__.MSG_EvilTwins=__builtin__.MSG_EvilTwins + "    " + spacer + fcolor.SWhite + "  Client   [ " + fcolor.SRed + "No Client Found" + fcolor.SWhite + " ]\n"                    
+                        __builtin__.MSG_EvilTwins=__builtin__.MSG_EvilTwins + "    " + spacer + fcolor.SWhite + "  Client   [ " + fcolor.SRed + "No Client Found" + fcolor.SWhite + " ]\n"
+                        textClients = "    " + spacer + "  Client   [ No Client Found ]\n"
                     else:
                         __builtin__.MSG_EvilTwins=__builtin__.MSG_EvilTwins + "    " + spacer + fcolor.SWhite + "  Client   [ " + fcolor.BRed + str(CONNECTED_CLIENT_CT) + fcolor.SWhite + " ] - " + fcolor.SBlue + str(CONNECTED_CLIENT) + "\n"
+                        textClients = "    " + spacer + "  Client   [ " + str(CONNECTED_CLIENT_CT) + " ] - " +  str(CONNECTED_CLIENT) + "\n"
+                    textCautious = textCautious + "   " + spacer + BSSIDText + "      " + str(DisplaySSIDDetail(BSSID)) + textClients
                 y += 1
+
             __builtin__.MSG_EvilTwins=__builtin__.MSG_EvilTwins + "\n"
+
+            # Thesis Cautious vars value
+            CautiousType = "Similar SSID Names"
+            CautiousInfo = str(similarcount) + " BSSIDs are broadcasting as SSID " + str(Similar_ESSID[x])
+            CautiousDetails = RemoveColor(textCautious)
+
+            # Thesis Cautious Data Add
+            cautiousData.append(IDSCautiousToJson(CautiousCount,CautiousType,CautiousInfo,CautiousDetails))
+
             x += 1
         if __builtin__.MSG_EvilTwins!="":
             __builtin__.MSG_EvilTwins=__builtin__.MSG_EvilTwins + "\n" + fcolor.BCyan + "     Note  : " + fcolor.SWhite + "Shown above are Access Points with Similar Name, Evil-Twin in normal cases are usually open network or encrypted if passphase is known."
@@ -16248,6 +16863,7 @@ def CheckDiffBSSIDConnection():
             __builtin__.MSG_EvilTwins=__builtin__.MSG_EvilTwins + "\n" + fcolor.BCyan + "             " + fcolor.SWhite + "Multiple " + fcolor.SRed + "[Deauthentication]" + fcolor.SWhite + " found on said Access Point detect may indicate high possibility of " + fcolor.SRed + "Evil-Twin\n"
             __builtin__.MSG_EvilTwins=__builtin__.MSG_EvilTwins + ReportNow() + "\n"
             __builtin__.MSG_EvilTwins=fcolor.BRed + str(CautiousCount) + " Similar SSID Names Detected !!!\n" + __builtin__.MSG_EvilTwins
+
     while x < len(ListInfo_STATION):
         y=0
 	if str(ListInfo_BSSID).find(str(ListInfo_STATION[x]))!=-1 and CheckWhitelist(ListInfo_STATION[x])=="":
@@ -16259,12 +16875,21 @@ def CheckDiffBSSIDConnection():
                     if int(ListInfo_SSIDTimeGap[y])<int(__builtin__.HIDE_AFTER_MIN) and int(ListInfo_CTimeGap[x])<int(__builtin__.HIDE_AFTER_MIN):
                         CautiousCount += 1
                         OUITxt=DisplayOUIDetail(ListInfo_STATION[x],ColorDev)
-                        __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + ColorStd + "Device MAC [ " + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] is found to be both an " + fcolor.BRed + "Access Point " + ColorStd + "&" + fcolor.BRed + " Wireless Client\n" 
+                        __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + ColorStd + "Device MAC [ " + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] is found to be both an " + fcolor.BRed + "Access Point " + ColorStd + "&" + fcolor.BRed + " Wireless Client\n"
                         __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + str(DisplayESSIDDetail(ListInfo_STATION[x],ColorDev))
                         __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + str(OUITxt) 
-                        __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + str(DisplaySSIDDetail(ListInfo_STATION[x])) 
+                        __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + str(DisplaySSIDDetail(ListInfo_STATION[x]))
                         __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + ColorStd2 + "  Ac. Pt.  : First Seen on [ " + ColorSeen + str(ListInfo_FirstSeen[y]) + ColorStd2 + " ] and Last Seen on [ " + ColorSeen + str(ListInfo_LastSeen[y]) + ColorStd2 + " ] (Last seen " + str(ListInfo_SSIDTimeGap[y]) + " mins ago)\n"
-                        __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + ColorStd2 + "  Station  : First Seen on [ " + ColorSeen + str(ListInfo_CFirstSeen[x]) + ColorStd2 + " ] and Last Seen on [ " + ColorSeen + str(ListInfo_CLastSeen[x]) + ColorStd2 + " ] (Last seen " + str(ListInfo_CTimeGap[x]) + " mins ago)\n" 
+                        __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + ColorStd2 + "  Station  : First Seen on [ " + ColorSeen + str(ListInfo_CFirstSeen[x]) + ColorStd2 + " ] and Last Seen on [ " + ColorSeen + str(ListInfo_CLastSeen[x]) + ColorStd2 + " ] (Last seen " + str(ListInfo_CTimeGap[x]) + " mins ago)\n"
+
+                        # Thesis Cautious Log Details
+                        textCautious = "Device MAC [ " + str(ListInfo_STATION[x]) + " ] is found to be both an Access Point & Wireless Client\n"
+                        textCautious = textCautious + str(DisplayESSIDDetail(ListInfo_STATION[x], ColorDev))
+                        textCautious = textCautious + str(OUITxt)
+                        textCautious = textCautious + str(DisplaySSIDDetail(ListInfo_STATION[x]))
+                        textCautious = textCautious + "  Ac. Pt.  : First Seen on [ " + str(ListInfo_FirstSeen[y]) + " ] and Last Seen on [ " + str(ListInfo_LastSeen[y]) + " ] (Last seen " + str(ListInfo_SSIDTimeGap[y]) + " mins ago)\n"
+                        textCautious = textCautious + "  Station  : First Seen on [ " + str(ListInfo_CFirstSeen[x]) + " ] and Last Seen on [ " + str(ListInfo_CLastSeen[x]) + " ] (Last seen " + str(ListInfo_CTimeGap[x]) + " mins ago)\n"
+                        
                         if str(ListInfo_CBSSIDPrev[x]).find("Not Associated")==-1:
                             OUITxt2=DisplayOUIDetail(ListInfo_CBSSIDPrev[x],Color1st)
                             __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + ColorStd2 + "  Signal   [ " + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] = " + ColorDev + str(GetSignalData(str(ListInfo_STATION[x]))) + ColorStd2 + " ==>  [ " + Color1st + str(ListInfo_CBSSIDPrev[x]) + ColorStd2 + " ] = " + Color1st  + str(GetSignalData(str(ListInfo_CBSSIDPrev[x]))) + "\n"
@@ -16273,6 +16898,11 @@ def CheckDiffBSSIDConnection():
                             __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + OUITxt2
                             __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + str(DisplaySSIDDetail(ListInfo_CBSSIDPrev[x]))
                             ConnectedBSSID=ListInfo_CBSSIDPrev[x]
+
+                            # Thesis Cautious Log Details
+                            textCautious = textCautious + "  Signal   [ " + str(ListInfo_STATION[x]) + " ] = " + str(GetSignalData(str(ListInfo_STATION[x]))) + " ==>  [ " + str(ListInfo_CBSSIDPrev[x]) + " ] = "  + str(GetSignalData(str(ListInfo_CBSSIDPrev[x]))) + "\n"
+                            textCautious = textCautious + ArrangeSignalLocation(ColorDev,str(ListInfo_STATION[x]),str(GetSignal(str(ListInfo_STATION[x]))),Color1st,ListInfo_CBSSIDPrev[x],str(GetSignal(ListInfo_CBSSIDPrev[x])),"  ",ColorStd2,"") + str(DisplayESSIDDetail(ListInfo_CBSSIDPrev[x],Color1st)) + OUITxt2 + str(DisplaySSIDDetail(ListInfo_CBSSIDPrev[x]))
+
                         if str(ListInfo_CBSSID[x]).find("Not Associated")==-1 and ListInfo_CBSSIDPrev[x]!=ListInfo_CBSSID[x]:
                             OUITxt2=DisplayOUIDetail(ListInfo_CBSSID[x],Color2nd)
                             __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + ColorStd2 + "  Signal   [ " + ColorDev + str(ListInfo_STATION[x]) + ColorStd2 + " ] = " + ColorDev + str(GetSignalData(str(ListInfo_STATION[x]))) + ColorStd2 + " ==>  [ " + Color1st + str(ListInfo_CBSSID[x]) + ColorStd2 + " ] = " + Color2nd  + str(GetSignalData(str(ListInfo_CBSSID[x]))) + "\n"
@@ -16281,7 +16911,11 @@ def CheckDiffBSSIDConnection():
                             __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + OUITxt2
                             __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + str(DisplaySSIDDetail(ListInfo_CBSSID[x]))
                             ConnectedBSSID=ListInfo_CBSSID[x]
-                            
+
+                            # Thesis Cautious Log Details
+                            textCautious = textCautious + "  Signal   [ " + str(ListInfo_STATION[x]) + " ] = " + str(GetSignalData(str(ListInfo_STATION[x]))) + " ==>  [ " + str(ListInfo_CBSSID[x]) + " ] = " + str(GetSignalData(str(ListInfo_CBSSID[x]))) + "\n"
+                            textCautious = textCautious + ArrangeSignalLocation(ColorDev,str(ListInfo_STATION[x]),str(GetSignal(str(ListInfo_STATION[x]))),Color1st,ListInfo_CBSSID[x],str(GetSignal(ListInfo_CBSSID[x])),"  ",ColorStd2,"") + str(DisplayESSIDDetail(ListInfo_CBSSID[x],Color2nd)) + OUITxt2 + str(DisplaySSIDDetail(ListInfo_CBSSID[x]))
+
                         __builtin__.MSG_APnClient = __builtin__.MSG_APnClient + str(ReportNow()) + "\n"
                         SkipWrite=0
                         if IsFileDirExist(DBFile1)=="F":
@@ -16302,8 +16936,18 @@ def CheckDiffBSSIDConnection():
                             col=";"
                             WriteData=str(ListInfo_STATION[x]) + str(col) + str(ConnectedBSSID) + str(col) + str(ListInfo_FirstSeen[y]) + str(col) + str(ListInfo_CFirstSeen[x]) + str(col) + str(Now())  + str(col) + str(ListInfo_ESSID[y]) + str(col) + "\n"
                             open(DBFile1,"a+b").write(WriteData)
+
+                        # Thesis Cautious vars value
+                        CautiousType = "Dual Device Type Detected"
+                        CautiousInfo = "Device MAC [ " + str(ListInfo_STATION[x]) + " ] is found to be both an Access Point & Wireless Client"
+                        CautiousDetails = RemoveColor(textCautious)
+
+                        # Thesis Cautious Data Add
+                        cautiousData.append(IDSCautiousToJson(CautiousCount, CautiousType, CautiousInfo, CautiousDetails))
+
                     y=len(ListInfo_BSSID)
                 y += 1
+
         if ListInfo_CBSSIDPrev[x]!=ListInfo_CBSSID[x] and CheckWhitelist(ListInfo_STATION[x])=="":
             if ListInfo_CBSSIDPrev[x].find("Not Associated")==-1:
                OUITxt=DisplayOUIDetail(ListInfo_STATION[x],ColorDev)
@@ -16318,9 +16962,17 @@ def CheckDiffBSSIDConnection():
                    spacer=" "
                if ListInfo_CBSSID[x]=="Not Associated":
                    __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + ColorStd + " Device    [ "  + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] initially associated with [ " + Color1st + str(ListInfo_CBSSIDPrev[x]) + ColorStd + " ] is now not associated with any access point.\n"
+                   #Thesis Cautious var value
+                   CautiousInfo = " Device    [ "  + str(ListInfo_STATION[x]) + " ] initially associated with [ " + str(ListInfo_CBSSIDPrev[x]) + " ] is now not associated with any access point.\n"
                else:
-                   __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + ColorStd + " Device    [ "  + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] initially associated with [ " + Color1st + str(ListInfo_CBSSIDPrev[x]) + ColorStd + " ] is now associated to [ " + Color2nd + str(ListInfo_CBSSID[x]) + ColorStd + " ].\n" 
-               __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + str(DisplayOUIDetail(ListInfo_STATION[x],ColorDev)) 
+                   __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + ColorStd + " Device    [ "  + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] initially associated with [ " + Color1st + str(ListInfo_CBSSIDPrev[x]) + ColorStd + " ] is now associated to [ " + Color2nd + str(ListInfo_CBSSID[x]) + ColorStd + " ].\n"
+                   # Thesis Cautious var value
+                   CautiousInfo = " Device    [ " + str(ListInfo_STATION[x]) + " ] initially associated with [ " + str(ListInfo_CBSSIDPrev[x]) + " ] is now associated to [ " + str(ListInfo_CBSSID[x]) + " ].\n"
+
+               # Thesis Cautious Log Details
+               textCautious = CautiousInfo
+
+               __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + str(DisplayOUIDetail(ListInfo_STATION[x],ColorDev))
                __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + ColorStd2 + "  Signal   [ " + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] = " + ColorDev + str(GetSignalData(str(ListInfo_STATION[x]))) + ColorStd + " ==>  [ " + Color1st + str(ListInfo_CBSSIDPrev[x]) + ColorStd + " ] = " + Color1st  + str(GetSignalData(str(ListInfo_CBSSIDPrev[x]))) + "\n"
                __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + ArrangeSignalLocation(ColorDev,str(ListInfo_STATION[x]),str(GetSignal(str(ListInfo_STATION[x]))),Color1st,ListInfo_CBSSIDPrev[x],str(GetSignal(ListInfo_CBSSIDPrev[x])),"  ",ColorStd2,"")
                __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + ColorStd2 + "  Signal   [ " + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] = " + ColorDev + str(GetSignalData(str(ListInfo_STATION[x]))) + ColorStd + " ==>  [ " + Color2nd + str(ListInfo_CBSSID[x]) + ColorStd + " ] = " + Color2nd + str(GetSignalData(str(ListInfo_CBSSID[x]))) + "\n"
@@ -16328,31 +16980,66 @@ def CheckDiffBSSIDConnection():
                __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + str(DisplayESSIDDetail(ListInfo_CBSSIDPrev[x],Color1st))  
                __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + str(DisplayOUIDetail(ListInfo_CBSSIDPrev[x],Color1st)) 
                __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + str(DisplaySSIDDetail(ListInfo_CBSSIDPrev[x]))
+
+               # Thesis Cautious Log Details
+               textCautious = textCautious + str(DisplayOUIDetail(ListInfo_STATION[x],ColorDev))
+               textCautious = textCautious + "  Signal   [ " + str(ListInfo_STATION[x]) + " ] = " + str(GetSignalData(str(ListInfo_STATION[x]))) + " ==>  [ " + str(ListInfo_CBSSIDPrev[x]) + " ] = " + str(GetSignalData(str(ListInfo_CBSSIDPrev[x]))) + "\n"
+               textCautious = textCautious + ArrangeSignalLocation(ColorDev,str(ListInfo_STATION[x]),str(GetSignal(str(ListInfo_STATION[x]))),Color1st,ListInfo_CBSSIDPrev[x],str(GetSignal(ListInfo_CBSSIDPrev[x])),"  ",ColorStd2,"")
+               textCautious = textCautious + "  Signal   [ " + str(ListInfo_STATION[x]) + " ] = " + str(GetSignalData(str(ListInfo_STATION[x]))) + " ==>  [ " + str(ListInfo_CBSSID[x]) + " ] = " + str(GetSignalData(str(ListInfo_CBSSID[x]))) + "\n"
+               textCautious = textCautious + ArrangeSignalLocation(ColorDev,str(ListInfo_STATION[x]),str(GetSignal(str(ListInfo_STATION[x]))),Color1st,ListInfo_CBSSID[x],str(GetSignal(ListInfo_CBSSID[x])),"  ",ColorStd2,"")
+               textCautious = textCautious + str(DisplayESSIDDetail(ListInfo_CBSSIDPrev[x],Color1st)) + str(DisplayOUIDetail(ListInfo_CBSSIDPrev[x],Color1st)) + str(DisplaySSIDDetail(ListInfo_CBSSIDPrev[x]))
+
                if str(ListInfo_CBSSID[x]).find("Not Associated")==-1:
                    __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + str(DisplayESSIDDetail(ListInfo_CBSSID[x],Color2nd))
                    __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + str(DisplayOUIDetail(ListInfo_CBSSID[x],Color2nd))
                    __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + str(DisplaySSIDDetail(ListInfo_CBSSID[x]))
+                   # Thesis Cautious Log Details
+                   textCautious = textCautious + str(DisplayESSIDDetail(ListInfo_CBSSID[x],Color2nd)) + str(DisplayOUIDetail(ListInfo_CBSSID[x],Color2nd)) + str(DisplaySSIDDetail(ListInfo_CBSSID[x]))
+
+               # Thesis Cautious vars value
+               CautiousType = "Station Switching Connection"
+               CautiousDetails = RemoveColor(textCautious)
+
+               # Thesis Cautious Data Add
+               cautiousData.append(IDSCautiousToJson(CautiousCount, CautiousType, CautiousInfo, CautiousDetails))
+
                __builtin__.MSG_DiffBSSIDConnection = __builtin__.MSG_DiffBSSIDConnection + str(ReportNow()) + "\n"
                WriteSwitchedAP(ListInfo_STATION[x],ListInfo_CBSSIDPrev[x],ListInfo_CBSSID[x],FindESSID(ListInfo_CBSSIDPrev[x]), FindESSID(ListInfo_CBSSID[x]))
             else:
-               CautiousCount += 1
-               if len(str(x))==1:
+                CautiousCount += 1
+                if len(str(x))==1:
                    spacer="  "
-               if len(str(x))==2:
+                if len(str(x))==2:
                    spacer=" "
-               OUITxt=DisplayOUIDetail(ListInfo_STATION[x],ColorDev)
-               OUITxt3=DisplayOUIDetail(ListInfo_CBSSID[x],Color2nd)
-               ESSIDTxt3=DisplayESSIDDetail(ListInfo_CBSSID[x],Color2nd)
-               __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + ColorStd +  " Device    [ "  + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] initially not associated is now associated with [ " + Color2nd + str(ListInfo_CBSSID[x]) + ColorStd + " ].\n" 
-               __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + ColorStd2 + "  Signal   [ " + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] = " + ColorDev + str(GetSignalData(str(ListInfo_STATION[x]))) + ColorStd + " ==> [ " + Color2nd + str(ListInfo_CBSSID[x]) + ColorStd + " ] = " + Color2nd  + str(GetSignalData(str(ListInfo_CBSSID[x]))) + "\n"
-               __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + ArrangeSignalLocation(ColorDev,str(ListInfo_STATION[x]),str(GetSignal(str(ListInfo_STATION[x]))),Color1st,ListInfo_CBSSID[x],str(GetSignal(ListInfo_CBSSID[x])),"  ",ColorStd2,"")
-               __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + str(OUITxt) + str(ESSIDTxt3) + str(OUITxt3) 
-               __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + str(DisplaySSIDDetail(ListInfo_CBSSID[x]))
-               __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + str(ReportNow())+ "\n"
+                OUITxt=DisplayOUIDetail(ListInfo_STATION[x],ColorDev)
+                OUITxt3=DisplayOUIDetail(ListInfo_CBSSID[x],Color2nd)
+                ESSIDTxt3=DisplayESSIDDetail(ListInfo_CBSSID[x],Color2nd)
+                __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + ColorStd +  " Device    [ "  + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] initially not associated is now associated with [ " + Color2nd + str(ListInfo_CBSSID[x]) + ColorStd + " ].\n"
+                __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + ColorStd2 + "  Signal   [ " + ColorDev + str(ListInfo_STATION[x]) + ColorStd + " ] = " + ColorDev + str(GetSignalData(str(ListInfo_STATION[x]))) + ColorStd + " ==> [ " + Color2nd + str(ListInfo_CBSSID[x]) + ColorStd + " ] = " + Color2nd  + str(GetSignalData(str(ListInfo_CBSSID[x]))) + "\n"
+                __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + ArrangeSignalLocation(ColorDev,str(ListInfo_STATION[x]),str(GetSignal(str(ListInfo_STATION[x]))),Color1st,ListInfo_CBSSID[x],str(GetSignal(ListInfo_CBSSID[x])),"  ",ColorStd2,"")
+                __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + str(OUITxt) + str(ESSIDTxt3) + str(OUITxt3)
+                __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + str(DisplaySSIDDetail(ListInfo_CBSSID[x]))
+                __builtin__.MSG_NoAssocConnection = __builtin__.MSG_NoAssocConnection + str(ReportNow())+ "\n"
+
+                # Thesis Cautious Log Details
+                textCautious = " Device    [ "  + str(ListInfo_STATION[x]) + " ] initially not associated is now associated with [ " + str(ListInfo_CBSSID[x]) + " ].\n"
+                textCautious = textCautious + "  Signal   [ " + str(ListInfo_STATION[x]) + " ] = " + str(GetSignalData(str(ListInfo_STATION[x]))) + " ==> [ " + str(ListInfo_CBSSID[x]) + " ] = " + str(GetSignalData(str(ListInfo_CBSSID[x]))) + "\n"
+                textCautious = textCautious + ArrangeSignalLocation(ColorDev,str(ListInfo_STATION[x]),str(GetSignal(str(ListInfo_STATION[x]))),Color1st,ListInfo_CBSSID[x],str(GetSignal(ListInfo_CBSSID[x])),"  ",ColorStd2,"")
+                textCautious = textCautious + str(OUITxt) + str(ESSIDTxt3) + str(OUITxt3) + str(DisplaySSIDDetail(ListInfo_CBSSID[x]))
+
+                # Thesis Cautious vars value
+                CautiousType = "New Association Detected"
+                CautiousInfo = " Device    [ "  + str(ListInfo_STATION[x]) + " ] initially not associated is now associated with [ " + str(ListInfo_CBSSID[x]) + " ].\n"
+                CautiousDetails = RemoveColor(textCautious)
+
+                # Thesis Cautious Data Add
+                cautiousData.append(IDSCautiousToJson(CautiousCount, CautiousType, CautiousInfo, CautiousDetails))
+
             ListInfo_CBSSIDPrev[x]=ListInfo_CBSSID[x]
             if str(ListInfo_CBSSIDPrevList[x]).find(str(ListInfo_CBSSID[x]))==-1:
                 ListInfo_CBSSIDPrevList[x]=ListInfo_CBSSIDPrevList[x] + str(ListInfo_CBSSID[x]) + " | " 
         x += 1
+
     if __builtin__.MSG_DiffBSSIDConnection!="" or __builtin__.MSG_NoAssocConnection!="" or __builtin__.MSG_APnClient!="" or __builtin__.MSG_EvilTwins!="":
         if __builtin__.SHOW_CONNECTION_ALERT=="Yes":
             CenterText(fcolor.BGIYellow + fcolor.BRed,"=====  ASSOCIATION/CONNECTION  ALERT  [ " + str(CautiousCount) + " ] ===== ")
@@ -16392,6 +17079,31 @@ def CheckDiffBSSIDConnection():
                 __builtin__.MSG_HistoryConnection=RemoveAdditionalLF(__builtin__.MSG_HistoryConnection)
                 __builtin__.MSG_CombinationLogs=__builtin__.MSG_CombinationLogs + __builtin__.MSG_DiffBSSIDConnection + ""
             LineBreak()
+        # Thesis Cautious log to file
+        if __builtin__.saveToJson=="Yes":
+            jsonFileData = {}
+            jsonFileData['Cautious'] = str(CautiousCount)
+            jsonFileData['Reported'] = str(Now())
+            jsonFileData['CautiousLog'] = cautiousData
+            jsonFileData['WIDS'] = socket.gethostname()
+            __builtin__.JS_CautiousListing.append(jsonFileData)
+            jsonTofile(JSCautiousLog,__builtin__.JS_CautiousListing)
+        # Thesis Cautious Json to Server
+        if __builtin__.sendToServer == "Yes" and __builtin__.SERVER_URL != "":
+            if SendJsonToServer(jsonFileData,"cautious") == 200:
+                printc("i","Cautious json sent successfully!","")
+            else:
+                printc("i","Cautious json sent failure!","")
+#Thesis IDS Cautious to Json
+def IDSCautiousToJson(CautiousCount,CautiousType,CautiousInfo,CautiousDetails):
+
+    jsonData = {}
+    jsonData['No.'] = str(CautiousCount)
+    jsonData['CauType'] = CautiousType
+    jsonData['CauInfo'] = CautiousInfo
+    jsonData['CauDetails'] = CautiousDetails
+
+    return jsonData
 
 def WriteSwitchedAP(StnMAC,PrevBSSID,NewBSSID,PrevESSID,NewESSID):
     SkipWrite=0
@@ -17434,6 +18146,9 @@ def SaveConfig(CMD):
     if __builtin__.SELECTED_DICT=="":
         __builtin__.SELECTED_DICT=__builtin__.DEFAULT_DICT
     open(ConfigFile,"a+b").write("DICTIONARY=" + str(__builtin__.SELECTED_DICT) + "\n")
+    open(ConfigFile,"a+b").write("SERVER_URL=" + str(__builtin__.SERVER_URL) + "\n")
+    open(ConfigFile,"a+b").write("PHONE_NUMBER=" + str(__builtin__.PHONE_NUMBER) + "\n")
+    open(ConfigFile,"a+b").write("SMS_GATEWAY=" + str(__builtin__.SMS_GATEWAY) + "\n")
     if CMD!="":
         printc ("i",fcolor.BRed + "Application Setting Saved...","")
 
@@ -17527,6 +18242,13 @@ def LoadConfig():
                         A=tmpList[1]
                     if tmpList[0]=="DICTIONARY" and tmpList[1]!="":
                         __builtin__.SELECTED_DICT=str(tmpList[1])
+                    if tmpList[0]=="SERVER_URL" and tmpList[1]!="":
+                        __builtin__.SERVER_URL=str(tmpList[1])
+                    if tmpList[0]=="PHONE_NUMBER" and tmpList[1]!="":
+                        __builtin__.PHONE_NUMBER=str(tmpList[1])
+                    if tmpList[0]=="SMS_GATEWAY" and tmpList[1]!="":
+                        __builtin__.SMS_GATEWAY=str(tmpList[1])
+
     else:
         SaveConfig("")
     if __builtin__.DISABLE_BREAK=="Yes":
@@ -17642,6 +18364,9 @@ def SetIDS_Sensitivity(CMD):
     LineBreak()
     if CMD=="":
         SetIDS_Sensitivity("")
+    return
+
+def SetPhoneNumber(CMD):
     return
 
 def LoadPktConfig():
@@ -18289,6 +19014,27 @@ def GetHardwareID():
     hid=MD5(hid,"h")
     __builtin__.HWID=(hid)
     return hid
+# Thesis WIDS Connect Status Sending
+def SendConnectJson():
+    Data = {}
+    Data['WIDS'] = socket.gethostname()
+    jsonData = []
+    jsonData.append(Data)
+    if SendJsonToServer(jsonData, "widsconnect") == 200:
+        printc("i", "Connect Status Sent Successfully.","")
+        return True
+    return False
+# Thesis WIDS Disconnect Status Sending
+def SendDisconnectJson():
+    Data = {}
+    Data['WIDS'] = socket.gethostname()
+    jsonData = []
+    jsonData.append(Data)
+    if SendJsonToServer(jsonData, "widsdisconnect") == 200:
+        printc("i", "Disconnect Status Sent Successfully.","")
+        return True
+    return False
+
 ################################
 ################################
 __builtin__.STxt=fcolor.BRed
@@ -18325,6 +19071,7 @@ __builtin__.TimeStart=""
 __builtin__.TimeEnd=""
 appdir="/.SYWorks/WAIDPS/"
 dbdir="/.SYWorks/Database/"
+jsdir="/.SYWorks/Json/" # Thesis Json directory
 savedir="/.SYWorks/Saved/"
 attackdir="/.SYWorks/Captured/Attack/"
 mondir="/.SYWorks/Captured/Monitoring/"
@@ -18332,8 +19079,9 @@ tmpdir=appdir + "tmp/"
 __builtin__.currentdir=""
 PathList = ['tmp/']
 __builtin__.lookupdir=savedir
-__builtin__.searchdir=[lookupdir,savedir,dbdir,attackdir,mondir,appdir]
+__builtin__.searchdir=[lookupdir,savedir,dbdir,jsdir,attackdir,mondir,appdir]
 __builtin__.FilenameHeader="WAIDPS-"
+__builtin__.Hostname=socket.gethostname()+"-"
 __builtin__.ConfigFile=appdir + "config.ini"
 __builtin__.PktConfig=appdir + "pktconfig.ini"
 __builtin__.MonitorMACfile=dbdir + "MonitorMAC.ini"
@@ -18363,6 +19111,30 @@ DBFile4=dbdir + FilenameHeader + "Probes.db"
 DBFile5=dbdir + FilenameHeader + "ConnectHistory.db"
 DBFile6=dbdir + FilenameHeader + "SwitchedAP.db"
 DBFile7=dbdir + FilenameHeader + "Dictionary.db"
+# Thesis Define new Json file
+JSFile1=jsdir + FilenameHeader + Hostname + "APnStation.json"
+JSFile2=jsdir + FilenameHeader + Hostname + "AccessPoint.json"
+JSFile3=jsdir + FilenameHeader + Hostname + "Station.json"
+JSFile4=jsdir + FilenameHeader + Hostname + "Probes.json"
+JSFile5=jsdir + FilenameHeader + Hostname + "ConnectHistory.json"
+JSFile6=jsdir + FilenameHeader + Hostname + "SwitchedAP.json"
+JSFile7=jsdir + FilenameHeader + Hostname + "Dictionary.json"
+JSCautiousLog = jsdir + FilenameHeader + Hostname + "Cautious.json"
+JSAttackLog = jsdir + FilenameHeader + Hostname + "Attacks.json"
+JSSuspiciousLog=dbdir + FilenameHeader + Hostname + "Suspicious.json"
+
+# Thesis Define Options for Saving json files
+__builtin__.saveToJson="Yes"
+
+# Thesis Define Webserver for Sending json
+__builtin__.SERVER_URL=""
+__builtin__.sendToServer="No"
+
+# Thesis Define Phone Number for Sending sms
+__builtin__.PHONE_NUMBER=""
+__builtin__.SMS_GATEWAY=""
+__builtin__.sendSMS="No"
+
 DBWPS_SeqA=dbdir + FilenameHeader + "WPS_SeqA.db"
 DBWPS_SeqD=dbdir + FilenameHeader + "WPS_SeqD.db"
 DBWPS_Half=dbdir + FilenameHeader + "WPS_Half.db"
@@ -18514,6 +19286,10 @@ __builtin__.MSG_HistoryConnection=""
 __builtin__.MSG_AttacksLogging=""
 __builtin__.MSG_SuspiciousListing=""
 __builtin__.MSG_CombinationLogs=""
+# Thesis IDS Json String
+__builtin__.JS_IDSDetectionOverAll=""
+__builtin__.JS_CautiousListing=""
+
 __builtin__.ShowBSSIDList = []
 __builtin__.ShowStationList = []
 __builtin__.SearchLen=""
@@ -18738,6 +19514,7 @@ __builtin__.GATEWAY=""
 __builtin__.RTNCACHE=""
 __builtin__.DECKEY=""
 __builtin__.WPSKEY=""
+
 HANDSHAKE_LIST1=[]
 HANDSHAKE_LIST1R=[]
 HANDSHAKE_LIST2=[]
