@@ -13,3 +13,9 @@ Blog - http://syworks.blogspot.com/2014/04/waidps-wireless-auditing-intrusion.ht
 
 Fans Page - https://www.facebook.com/syworks
 
+Additional modules:
+======
+Based on 10 Oct 2014 update.
+
+- Intergrated SMS Report (Using HSPA USB Adapter as SMS Gateway)
+- Visualize WAIDPS by Monitoring Website (Using PHP, JS, MySQL,...)
